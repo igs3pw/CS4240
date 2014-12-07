@@ -1,3 +1,10 @@
+(**
+ * Innokentiy Shvets
+ * igs3pw
+ * CS4240
+ * Imp.v
+ *)
+
 (** * Imp: Simple Imperative Programs *)
 
 (** In this chapter, we begin a new direction that will continue for
@@ -1848,76 +1855,47 @@ Proof. reflexivity. Qed.
     general lemma to get a usable induction hypothesis; the main
     theorem will then be a simple corollary of this lemma. *)
 
-Lemma s_execute_append_push: forall st l l' n,
-  s_execute st l' (l ++ [SPush n]) = n :: s_execute st l' l.
+Lemma s_compile_append: forall st l s l2,
+  s_execute st s (l ++ l2) = s_execute st (s_execute st s l) l2.
 Proof.
   intros st l.
-  induction l.
-    simpl. intros l' n. reflexivity.
+  induction l as [| a l']; simpl.
+    reflexivity.
 
-    simpl. intros l' n.
-    destruct a; simpl; try (apply IHl; try apply H);
-      destruct l'; rewrite IHl; try reflexivity;
-        destruct l'; try (rewrite IHl); try reflexivity.
+    destruct a.
+      intros s l2. apply IHl'.
+
+      intros s l2. apply IHl'.
+
+      destruct s; try (apply IHl'); destruct s; apply IHl'.
+
+      destruct s; try (apply IHl'); destruct s; apply IHl'.
+
+      destruct s; try (apply IHl'); destruct s; apply IHl'.
   Qed.
 
-Lemma s_compile_prepend: forall st l l',
-  s_execute st [] (l' ++ l) = s_execute st (s_execute st [] l') l.
+Lemma s_compile_ignore: forall st e s,
+  s_execute st s (s_compile e) = (aeval st e) :: s.
 Proof.
-  intros st l.
-  induction l; simpl.
-    intros l'. rewrite app_nil_r. reflexivity.
+  intros st e.
+  induction e; try reflexivity.
+    intros s. simpl. rewrite s_compile_append. rewrite s_compile_append.
+    rewrite IHe1. rewrite IHe2. reflexivity.
 
-    intros l'. 
-    assert ((l' ++ a :: l) = ((l' ++ a :: nil) ++ l)).
-      rewrite <- app_assoc. rewrite <- app_comm_cons. simpl. reflexivity.
+    intros s. simpl. rewrite s_compile_append. rewrite s_compile_append.
+    rewrite IHe1. rewrite IHe2. reflexivity.
 
-      rewrite H. destruct a.
-        rewrite IHl. rewrite s_execute_append_push. reflexivity.
-
-        rewrite IHl. admit.
-
-        (*destruct l''.
-          apply IHl with (l'':=[]).
-            admit.
-
-          destruct l''.
-            apply IHl with (l'':=[n]).
-              admit.
-
-            apply IHl with (l'':=(n0 + n)::l'').
-              admit.
-
-        destruct l''.
-          apply IHl with (l'':=[]).
-            admit.
-
-          destruct l''.
-            apply IHl with (l'':=[n]).
-              admit.
-
-            apply IHl with (l'':=(n0 - n)::l'').
-              admit.
-
-        destruct l''.
-          apply IHl with (l'':=[]).
-            admit.
-
-          destruct l''.
-            apply IHl with (l'':=[n]).
-              admit.
-
-            apply IHl with (l'':=(n0 * n)::l'').
-              admit.
-  Qed.*) Abort.
+    intros s. simpl. rewrite s_compile_append. rewrite s_compile_append.
+    rewrite IHe1. rewrite IHe2. reflexivity.
+  Qed.
+    
 
 Theorem s_compile_correct : forall (st : state) (e : aexp),
   s_execute st [] (s_compile e) = [ aeval st e ].
 Proof.
   intros st e.
-  induction e; try reflexivity.
-  Case "APlus".
-    simpl. induction 
+  apply s_compile_ignore.
+  Qed.
 (** [] *)
 
 (** **** Exercise: 5 stars, advanced (break_imp) *)
@@ -2040,14 +2018,46 @@ Reserved Notation "c1 '/' st '||' s '/' st'"
 Inductive ceval : com -> state -> status -> state -> Prop :=
   | E_Skip : forall st,
       CSkip / st || SContinue / st
-  (* FILL IN HERE *)
+  | E_Break : forall st,
+      CBreak / st || SBreak / st
+  | E_Ass  : forall st a1 n x,
+      aeval st a1 = n ->
+      (x ::= a1) / st || SContinue / (update st x n)
+  | E_Seq : forall c1 c2 st st' st'' s,
+      c1 / st  || SContinue / st' ->
+      c2 / st' || s / st'' ->
+      (c1 ; c2) / st || s / st''
+  | E_SeqBreak : forall c1 c2 st st',
+      c1 / st  || SBreak / st' ->
+      (c1 ; c2) / st || SBreak / st'
+  | E_IfTrue : forall st st' b c1 c2 s,
+      beval st b = true ->
+      c1 / st || s / st' ->
+      (IFB b THEN c1 ELSE c2 FI) / st || s / st'
+  | E_IfFalse : forall st st' b c1 c2 s,
+      beval st b = false ->
+      c2 / st || s / st' ->
+      (IFB b THEN c1 ELSE c2 FI) / st || s / st'
+  | E_WhileEnd : forall b st c,
+      beval st b = false ->
+      (WHILE b DO c END) / st || SContinue / st
+  | E_WhileLoop : forall st st' st'' b c,
+      beval st b = true ->
+      c / st || SContinue / st' ->
+      (WHILE b DO c END) / st' || SContinue / st'' ->
+      (WHILE b DO c END) / st || SContinue / st''
+  | E_WhileBreak : forall st st' b c,
+      beval st b = true ->
+      c / st || SBreak / st' ->
+      (WHILE b DO c END) / st || SContinue / st'
 
   where "c1 '/' st '||' s '/' st'" := (ceval c1 st s st').
 
 Tactic Notation "ceval_cases" tactic(first) ident(c) :=
   first;
-  [ Case_aux c "E_Skip"
-  (* FILL IN HERE *)
+  [ Case_aux c "E_Skip" | Case_aux c "E_Break" | Case_aux c "E_Seq"
+  | Case_aux c "E_SeqBreak" | Case_aux c "E_IfTrue" | Case_aux c "E_IfFalse"
+  | Case_aux c "E_WhileEnd" | Case_aux c "E_WhileLoop" | Case_aux c "E_WhileBreak"
   ].
 
 (** Now the following properties of your definition of [ceval]: *)
@@ -2056,20 +2066,32 @@ Theorem break_ignore : forall c st st' s,
      (BREAK; c) / st || s / st' ->
      st = st'.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros c st st' s.
+  intros H.
+  inversion H; subst.
+    inversion H2.
+
+    inversion H5. reflexivity.
+  Qed.
 
 Theorem while_continue : forall b c st st' s,
   (WHILE b DO c END) / st || s / st' ->
   s = SContinue.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros b c st st' s.
+  intros H.
+  inversion H; subst; reflexivity.
+  Qed.
 
 Theorem while_stops_on_break : forall b c st st',
   beval st b = true ->
   c / st || SBreak / st' ->
   (WHILE b DO c END) / st || SContinue / st'.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros b c st st'.
+  intros H1 H2.
+  inversion H2; subst; apply E_WhileBreak; try (apply H1); apply H2.
+  Qed.
 
 (** **** Exercise: 3 stars, advanced, optional (while_break_true) *)
 Theorem while_break_true : forall b c st st',
@@ -2077,7 +2099,13 @@ Theorem while_break_true : forall b c st st',
   beval st' b = true ->
   exists st'', c / st'' || SBreak / st'.
 Proof.
-(* FILL IN HERE *) Admitted.
+  (*intros b c st st'.
+  intros H1 H2.
+  inversion H1; subst.
+    rewrite H4 in H2. inversion H2.
+
+    admit. *)
+  Admitted. (* TODO *)
 
 (** **** Exercise: 4 stars, advanced, optional (ceval_deterministic) *)
 Theorem ceval_deterministic: forall (c:com) st st1 st2 s1 s2,
@@ -2085,7 +2113,111 @@ Theorem ceval_deterministic: forall (c:com) st st1 st2 s1 s2,
      c / st || s2 / st2 ->
      st1 = st2 /\ s1 = s2.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros c.
+
+  induction c.
+    intros st st1 st2 s1 s2 H1 H2.
+    inversion H1; inversion H2; subst. split.  apply H7. reflexivity.
+
+    intros st st1 st2 s1 s2 H1 H2.
+    inversion H1; inversion H2; subst. split.  apply H7. reflexivity.
+
+    intros st st1 st2 s1 s2 H1 H2.
+    inversion H1; inversion H2; subst. split. reflexivity. reflexivity.
+
+  Case "Seq".
+    intros st st1 st2 s1 s2 H1 H2.
+    inversion H1; subst.
+      inversion H2; subst.
+        assert(st'0 = st' /\ SContinue = SContinue).
+          apply IHc1 with (st:=st).
+            apply H4.
+
+            apply H3.
+        inversion H. subst. apply IHc2 with (st:=st'). apply H7. apply H9.
+
+        assert(st' = st2 /\ SContinue = SBreak).
+          apply IHc1 with (st:=st); trivial.
+        inversion H. inversion H4.
+
+      inversion H2; subst.
+        assert(st1 = st' /\ SBreak = SContinue).
+          apply IHc1 with (st:=st); trivial.
+        inversion H. inversion H4.
+
+        apply IHc1 with (st:=st).
+          apply H6.
+
+          apply H7.
+
+  Case "If".
+    intros st st1 st2 s1 s2 H1 H2.
+    inversion H1; subst.
+      inversion H2; subst.
+        apply IHc1 with (st:=st); trivial.
+
+        rewrite H7 in H9. inversion H9.
+
+      inversion H2; subst.
+        rewrite H7 in H9. inversion H9.
+
+        apply IHc2 with (st:=st); trivial.
+
+  Case "While".
+    intros st st1 st2 s1 s2 H1 H2.
+
+    inversion H1; subst.
+      inversion H2; subst.
+        split; reflexivity.
+
+        rewrite H3 in H6. inversion H6.
+
+        rewrite H3 in H6. inversion H6.
+
+      inversion H2; subst.
+        rewrite H9 in H3. inversion H3.
+
+        (* A while loop may never terminate, which makes this proof difficult *)
+        assert(st'0 = st' /\ SContinue = SContinue).
+          apply IHc with (st:=st); trivial.
+        inversion H; subst. clear H. clear H6. clear H7. clear H5.
+
+        (*induction b.
+          inversion H8; subst.
+            inversion H6.
+
+            apply while_break_true in H2.
+
+            admit.
+
+          inversion H3.*)
+
+   
+
+        (*induction (WHILE b DO c END) eqn:H; try (inversion H).
+        subst. apply IHc0.*)
+
+        admit. (* FIXME *)
+
+        assert(st' = st2 /\ SContinue = SBreak).
+          apply IHc with (st:=st); trivial.
+        inversion H. inversion H6.
+
+      inversion H2; subst.
+        rewrite H8 in H3. inversion H3.
+
+        assert(st' = st1 /\ SContinue = SBreak).
+          apply IHc with (st:=st); trivial.
+        inversion H. inversion H6.
+
+        split.
+          assert(st1 = st2 /\ SBreak = SBreak).
+            apply IHc with (st:=st); trivial.
+          inversion H; subst; reflexivity.
+
+          reflexivity.
+
+  Qed.
 
 End BreakImp.
 (** [] *)
