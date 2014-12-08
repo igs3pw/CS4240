@@ -2099,13 +2099,88 @@ Theorem while_break_true : forall b c st st',
   beval st' b = true ->
   exists st'', c / st'' || SBreak / st'.
 Proof.
-  (*intros b c st st'.
+  intros b c.
+  generalize dependent b.
+
+  (*intros b st st'.
+  assert (exists (st'': state), 
+          st <> st' ->
+          c / st || SContinue / st'' ->
+          (WHILE b DO c END) / st'' || SContinue / st' ->
+          st <> st'').
+
+    admit.
+
   intros H1 H2.
+  inversion H.
+  assert(st <> st').
+    admit.
+
+  apply H0 in H3.
+    destruct c.
+      inversion H1; subst.*)
+
+  (*induction c; intros b' st st' H1 H2; inversion H1; subst; try (rewrite H4 in H2; inversion H2); try (exists st; apply H5).
+    inversion H4; subst.
+
+    assert (exists (st'': state), (st'0 <> st'') /\ (SKIP / st'0 || SContinue / st'') /\ (WHILE b' DO SKIP END) / st'' || SContinue / st').
+      admit.
+    inversion H. inversion H0. clear H0. inversion H7. clear H7.
+    inversion H0; subst. unfold not in H5. apply ex_falso_quodlibet. apply H5. reflexivity.
+      rewrite H10 in H2. inversion H2.
+
+      inversion H10; subst.
+
+    assert (exists (st'': state), (SKIP / st'' || SContinue / st') /\ ((WHILE b' DO SKIP END) / st'' || SContinue / st')).
+      admit.
+    inversion H.
+    inversion H0.
+    inversion H5; subst.
+      clear H0. clear H.
+
+    inversion H4.
+
+    admit.
+
+    admit.
+
+    admit.
+
+    apply IHc in H4.
+
+  intros b c st st'.
+  intros H1 H2.
+
   inversion H1; subst.
     rewrite H4 in H2. inversion H2.
 
-    admit. *)
-  Admitted. (* TODO *)
+    induction c; inversion H4; subst.
+      admit.
+
+      admit.
+
+      admit.
+
+Case "IfTrue".
+      admit.
+
+Case "IfFalse".
+      admit.
+
+Case "WhileEnd". (* Impossible *)
+      admit.
+
+    Case "WhileLoop". (* Impossible *)
+      admit.
+
+    Case "WhileEnd". (* Impossible *)
+      admit.
+
+    (* Notation defined in MoreLogic.v *)
+    exists st.
+      apply H5.*)
+  admit.
+  Qed. (* TODO *)
 
 (** **** Exercise: 4 stars, advanced, optional (ceval_deterministic) *)
 Theorem ceval_deterministic: forall (c:com) st st1 st2 s1 s2,
@@ -2182,11 +2257,34 @@ Proof.
           apply IHc with (st:=st); trivial.
         inversion H; subst. clear H. clear H6. clear H7. clear H5.
 
+        (*destruct (beval st2 b) eqn:H.
+          apply while_break_true in H2. admit.
+            apply H.
+
+          inversion H2; subst.
+            rewrite H7 in H3. inversion H3.
+
+            admit.*)
+
         (*induction b.
           inversion H8; subst.
             inversion H6.
 
             apply while_break_true in H2.
+              apply while_break_true in H1.
+                inversion H2. inversion H1.
+                assert (x0 = x). admit.
+                subst.
+                assert(st1 = st2 /\ SBreak = SBreak).
+                  apply IHc with (st:=x).
+                    apply H0.
+
+                    apply H.
+                inversion H7. split; trivial.
+
+                trivial.
+
+              trivial.
 
             admit.
 
