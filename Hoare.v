@@ -1141,7 +1141,22 @@ Theorem if_minus_plus :
   FI
   {{fun st => st Y = st X + st Z}}. 
 Proof.
-  (* FILL IN HERE *) Admitted.
+  apply hoare_if.
+  Case "Then".
+    eapply hoare_consequence_pre.
+      apply hoare_asgn.
+
+      unfold bassn, assn_sub, update. simpl.
+      intros st H. apply le_plus_minus.
+      inversion H. apply ble_nat_true. apply H1.
+
+  Case "Else".
+    eapply hoare_consequence_pre.
+      apply hoare_asgn.
+
+      unfold bassn, assn_sub, update. simpl.
+      intros st H. reflexivity.
+  Qed.
 
 (* ####################################################### *)
 (** *** Exercise: One-sided conditionals *)
@@ -1216,7 +1231,11 @@ Inductive ceval : com -> state -> state -> Prop :=
                   c1 / st || st' ->
                   (WHILE b1 DO c1 END) / st' || st'' ->
                   (WHILE b1 DO c1 END) / st || st''
-(* FILL IN HERE *)
+  | E_If1True : forall (st st' : state) (b1 : bexp) (c : com),
+               beval st b1 = true ->
+               c / st || st' -> (IF1 b1 THEN c FI) / st || st'
+  | E_If1False : forall (st : state) (b1 : bexp) (c : com),
+                beval st b1 = false -> (IF1 b1 THEN c FI) / st || st
 
   where "c1 '/' st '||' st'" := (ceval c1 st st').
 
@@ -1225,7 +1244,7 @@ Tactic Notation "ceval_cases" tactic(first) ident(c) :=
   [ Case_aux c "E_Skip" | Case_aux c "E_Ass" | Case_aux c "E_Seq"
   | Case_aux c "E_IfTrue" | Case_aux c "E_IfFalse"
   | Case_aux c "E_WhileEnd" | Case_aux c "E_WhileLoop"
-  (* FILL IN HERE *)
+  | Case_aux c "E_If1True" | Case_aux c "E_If2True"
   ].
 
 (** Now we repeat (verbatim) the definition and notation of Hoare triples. *)
@@ -1245,7 +1264,27 @@ Notation "{{ P }}  c  {{ Q }}" := (hoare_triple P c Q)
     for one-sided conditionals. Try to come up with a rule that is
     both sound and as precise as possible. *)
 
-(* FILL IN HERE *)
+Theorem hoare_if1 : forall P Q b c,
+  {{fun st => P st /\ bassn b st}} c {{Q}} ->
+  (fun st => P st /\ ~(bassn b st)) ->> Q ->
+  {{P}} (IF1 b THEN c FI) {{Q}}.
+Proof.
+  intros P Q b c HTrue HFalse st st' HE HP.
+  inversion HE; subst. 
+  Case "b is true".
+    apply (HTrue st st'). 
+      assumption. 
+      split. assumption. 
+             apply bexp_eval_true. assumption.
+  Case "b is false".
+    apply HFalse. split.
+      assumption. 
+      unfold not. intros H. apply bexp_eval_false in H.
+        assumption.
+
+        assumption.
+
+  Qed.
 
 (** For full credit, prove formally that your rule is precise enough
     to show the following valid Hoare triple:
@@ -1260,6 +1299,22 @@ Notation "{{ P }}  c  {{ Q }}" := (hoare_triple P c Q)
     rules also. Because we're working in a separate module, you'll
     need to copy here the rules you find necessary. *)
 
+Theorem hoare_consequence_pre : forall (P P' Q : Assertion) c,
+  {{P'}} c {{Q}} ->
+  P ->> P' ->
+  {{P}} c {{Q}}.
+Proof.
+  intros P P' Q c Hhoare Himp.
+  intros st st' Hc HP. apply (Hhoare st st'). 
+  assumption. apply Himp. assumption. Qed.
+
+Theorem hoare_asgn : forall Q X a,
+  {{Q [X |-> a]}} (X ::= a) {{Q}}.
+Proof.
+  unfold hoare_triple.
+  intros Q X a st st' HE HQ.
+  inversion HE. subst.
+  unfold assn_sub in HQ. assumption.  Qed.
 
 Lemma hoare_if1_good :
   {{ fun st => st X + st Y = st Z }}
@@ -1267,7 +1322,22 @@ Lemma hoare_if1_good :
     X ::= APlus (AId X) (AId Y)
   FI
   {{ fun st => st X = st Z }}.
-Proof. (* FILL IN HERE *) Admitted.
+Proof.
+  apply hoare_if1.
+  Case "True".
+    eapply hoare_consequence_pre.
+      apply hoare_asgn.
+
+      intros st H. unfold assn_sub, update. simpl. inversion H. apply H0.
+  Case "False".
+    unfold assn_sub, bassn, update, assert_implies. simpl. unfold not.
+    intros st H.
+    inversion H.
+    destruct (st Y).
+      rewrite plus_0_r in H0. apply H0.
+
+      simpl in H1. apply ex_falso_quodlibet. apply H1. reflexivity.
+  Qed.
 
 End If1.
 (** [] *)
@@ -1505,7 +1575,15 @@ Inductive ceval : state -> com -> state -> Prop :=
       ceval st c1 st' ->
       ceval st' (WHILE b1 DO c1 END) st'' ->
       ceval st (WHILE b1 DO c1 END) st''
-(* FILL IN HERE *)
+  | E_RepeatEnd : forall b1 st st' c1,
+      ceval st c1 st' ->
+      beval st' b1 = true ->
+      ceval st (REPEAT c1 UNTIL b1 END) st'
+  | E_RepeatLoop : forall st st' st'' b1 c1,
+      ceval st c1 st' ->
+      beval st' b1 = false ->
+      ceval st' (REPEAT c1 UNTIL b1 END) st'' ->
+      ceval st (REPEAT c1 UNTIL b1 END) st''
 .
 
 Tactic Notation "ceval_cases" tactic(first) ident(c) :=
@@ -1514,7 +1592,7 @@ Tactic Notation "ceval_cases" tactic(first) ident(c) :=
   | Case_aux c "E_Seq"
   | Case_aux c "E_IfTrue" | Case_aux c "E_IfFalse"
   | Case_aux c "E_WhileEnd" | Case_aux c "E_WhileLoop" 
-(* FILL IN HERE *)
+  | Case_aux c "E_RepeatEnd" | Case_aux c "E_RepeatLoop" 
 ].
 
 (** A couple of definitions from above, copied here so they use the
@@ -1543,7 +1621,15 @@ Theorem ex1_repeat_works :
   ex1_repeat / empty_state ||
                update (update empty_state X 1) Y 1.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  eapply E_RepeatEnd.
+  Case "Statement".
+    eapply E_Seq.
+      apply E_Ass. reflexivity.
+
+      apply E_Ass. reflexivity.
+  Case "Comparison".
+    reflexivity.
+  Qed.
 
 (** Now state and prove a theorem, [hoare_repeat], that expresses an
     appropriate proof rule for [repeat] commands.  Use [hoare_while]

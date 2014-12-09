@@ -2099,88 +2099,20 @@ Theorem while_break_true : forall b c st st',
   beval st' b = true ->
   exists st'', c / st'' || SBreak / st'.
 Proof.
-  intros b c.
-  generalize dependent b.
+  intros b c st st' Hloop Htrue.
 
-  (*intros b st st'.
-  assert (exists (st'': state), 
-          st <> st' ->
-          c / st || SContinue / st'' ->
-          (WHILE b DO c END) / st'' || SContinue / st' ->
-          st <> st'').
+  (* Looked at Hoare.v module, which had something like this in it *)
+  remember (WHILE b DO c END) as wcom eqn:Heqwcom.
+  induction Hloop; inversion Heqwcom; subst.
+    rewrite Htrue in H. inversion H.
 
-    admit.
+    apply IHHloop2.
+      reflexivity.
 
-  intros H1 H2.
-  inversion H.
-  assert(st <> st').
-    admit.
+      apply Htrue.
 
-  apply H0 in H3.
-    destruct c.
-      inversion H1; subst.*)
-
-  (*induction c; intros b' st st' H1 H2; inversion H1; subst; try (rewrite H4 in H2; inversion H2); try (exists st; apply H5).
-    inversion H4; subst.
-
-    assert (exists (st'': state), (st'0 <> st'') /\ (SKIP / st'0 || SContinue / st'') /\ (WHILE b' DO SKIP END) / st'' || SContinue / st').
-      admit.
-    inversion H. inversion H0. clear H0. inversion H7. clear H7.
-    inversion H0; subst. unfold not in H5. apply ex_falso_quodlibet. apply H5. reflexivity.
-      rewrite H10 in H2. inversion H2.
-
-      inversion H10; subst.
-
-    assert (exists (st'': state), (SKIP / st'' || SContinue / st') /\ ((WHILE b' DO SKIP END) / st'' || SContinue / st')).
-      admit.
-    inversion H.
-    inversion H0.
-    inversion H5; subst.
-      clear H0. clear H.
-
-    inversion H4.
-
-    admit.
-
-    admit.
-
-    admit.
-
-    apply IHc in H4.
-
-  intros b c st st'.
-  intros H1 H2.
-
-  inversion H1; subst.
-    rewrite H4 in H2. inversion H2.
-
-    induction c; inversion H4; subst.
-      admit.
-
-      admit.
-
-      admit.
-
-Case "IfTrue".
-      admit.
-
-Case "IfFalse".
-      admit.
-
-Case "WhileEnd". (* Impossible *)
-      admit.
-
-    Case "WhileLoop". (* Impossible *)
-      admit.
-
-    Case "WhileEnd". (* Impossible *)
-      admit.
-
-    (* Notation defined in MoreLogic.v *)
-    exists st.
-      apply H5.*)
-  admit.
-  Qed. (* TODO *)
+    exists st. apply Hloop.
+  Qed.
 
 (** **** Exercise: 4 stars, advanced, optional (ceval_deterministic) *)
 Theorem ceval_deterministic: forall (c:com) st st1 st2 s1 s2,
@@ -2241,6 +2173,34 @@ Proof.
   Case "While".
     intros st st1 st2 s1 s2 H1 H2.
 
+    split.
+
+    remember (WHILE b DO c END) as wcom eqn:Heqwcom.
+    induction H1; inversion Heqwcom; subst.
+      remember (WHILE b DO c END) as wcom0.
+      induction H2; inversion Heqwcom0; subst.
+        reflexivity.
+
+        admit.
+
+        rewrite H0 in H. inversion H.
+      clear IHceval1.
+      remember (WHILE b DO c END) as wcom0.
+      induction H2; inversion Heqwcom0; subst.
+        admit.
+
+        clear IHceval1. admit.
+
+        clear IHceval. apply IHceval2.
+          reflexivity.
+
+          admit.
+      admit.
+    admit.
+  Qed.
+        
+      
+(*
     inversion H1; subst.
       inversion H2; subst.
         split; reflexivity.
@@ -2315,7 +2275,7 @@ Proof.
 
           reflexivity.
 
-  Qed.
+  Qed.*)
 
 End BreakImp.
 (** [] *)
