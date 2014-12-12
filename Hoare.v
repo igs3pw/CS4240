@@ -520,37 +520,31 @@ Proof.
 
   (*intros st st' HX HP.
   inversion HX; inversion HP; subst.
-  unfold aeval.*)
+  unfold update. simpl.*)
 
   split. 
-    admit.
+    inversion H. subst. inversion H0. subst.
+    unfold update.
+    rewrite functional_extensionality with (g:=st).
+      assumption.
 
-    generalize dependent st. generalize dependent st'.
+      intros x.
+      destruct (eq_id_dec X x).
+        subst. trivial.
 
-  induction a; intros st st' HX HP; inversion HX; inversion HP; subst; rewrite update_eq; simpl.
-    reflexivity.
+        trivial.
 
-    rewrite update_same. rewrite update_same.
-      reflexivity.
+    Case "st X = aeval (update st X m) a".
+    inversion H. subst. inversion H0. subst.
+    rewrite update_eq.
+    rewrite functional_extensionality with (f:=(update (update st X (aeval st a)) X (st X))) (g:=st).
+      trivial.
 
-      admit.
+      intros x.
+      unfold update. destruct (eq_id_dec X x).
+        subst. trivial.
 
-      rewrite update_eq. admit.
-
-    rewrite <- IHa1 with (st:=st'). rewrite <- IHa2 with (st:=st').
-      rewrite update_eq. admit.
-
-      admit.
-
-      apply HP.
-
-      admit.
-
-      apply HP.
-
-    admit.
-
-    admit.
+        trivial.
   Qed.
   
 (** [] *)
@@ -580,8 +574,18 @@ Proof.
   unfold hoare_triple.
 
   intros st st' HX HP.
-  exists (st X).
-  admit. (* TODO *)
+
+  inversion HX. subst. rewrite update_eq. exists (st X).
+  rewrite functional_extensionality with (f:=(update (update st X (aeval st a)) X (st X))) (g:=st).
+    split.
+      assumption.
+
+      trivial.
+
+    intros x. unfold update. destruct (eq_id_dec X x).
+      subst. trivial.
+
+      trivial.
   Qed.
 (** [] *)
 
@@ -1635,7 +1639,78 @@ Proof.
     appropriate proof rule for [repeat] commands.  Use [hoare_while]
     as a model, and try to make your rule as precise as possible. *)
 
-(* FILL IN HERE *)
+(**
+  Executed once.
+  {{P}} c {{Q /\ b}}
+  {{P}} REPEAT c UNTIL b END {{Q /\ b}}
+
+  All but last.
+  {{P}} c {{P /\ ~b}}
+  
+  Together
+  {{P}} c {{P /\ ~b \/ Q /\ b}}
+*)
+
+Lemma hoare_repeat : forall P Q b c,
+  {{P}} c {{fun st => (P st /\ ~(bassn b st)) \/ (Q st /\ bassn b st)}} ->
+  {{P}} REPEAT c UNTIL b END {{fun st => Q st /\ bassn b st}}.
+Proof.
+  intros P Q b c Hhoare st st' He HP.
+  remember (REPEAT c UNTIL b END) as wcom eqn:Heqwcom.
+  ceval_cases (induction He) Case;
+    try (inversion Heqwcom); subst; clear Heqwcom.
+  Case "E_RepeatEnd".
+    unfold hoare_triple in Hhoare.
+      assert ((P st' /\ ~ bassn b st' \/ Q st' /\ bassn b st') -> (Q st' /\ bassn b st')).
+        intros Hfull. inversion Hfull.
+          inversion H0. unfold bassn in H2. rewrite H in H2.
+          apply ex_falso_quodlibet. apply H2. reflexivity.
+
+          assumption.
+      apply H0. eapply Hhoare.
+        apply He.
+
+        assumption.
+  Case "E_RepeatLoop".
+    apply IHHe2.
+      trivial.
+    unfold hoare_triple in Hhoare.
+      assert ((P st' /\ ~ bassn b st' \/ Q st' /\ bassn b st') -> P st').
+        intros Hfull. inversion Hfull.
+          inversion H0. assumption.
+
+          inversion H0. unfold bassn in H2. rewrite H in H2. inversion H2.
+      apply H0. eapply Hhoare.
+        apply He1.
+
+        assumption.
+  Qed.
+      
+
+(*Lemma hoare_repeat : forall P b c,
+  {{P}} c {{P}} ->
+  {{P}} REPEAT c UNTIL b END {{fun st => P st /\ bassn b st}}. Admitted.
+Proof.
+  intros P Q b c Hhoare1 Hhoare2 st st' He HP.
+  remember (REPEAT c UNTIL b END) as wcom eqn:Heqwcom.
+  ceval_cases (induction He) Case;
+    try (inversion Heqwcom); subst; clear Heqwcom.
+  Case "E_RepeatEnd".
+    split.
+      apply (Hhoare1 st st').
+        assumption.
+
+        assumption.
+
+      apply bexp_eval_true. assumption.
+  Case "E_RepeatLoop".
+    apply IHHe2.
+      reflexivity.
+    apply (Hhoare2 st st').
+      assumption.
+
+      assumption.
+Qed.*)
 
 (** For full credit, make sure (informally) that your rule can be used
     to prove the following valid Hoare triple:
@@ -1647,6 +1722,108 @@ Proof.
   {{ X = 0 /\ Y > 0 }}
 *)
 
+Theorem hoare_consequence_pre : forall (P P' Q : Assertion) c,
+  {{P'}} c {{Q}} ->
+  P ->> P' ->
+  {{P}} c {{Q}}.
+Proof.
+  intros P P' Q c Hhoare Himp.
+  intros st st' Hc HP. apply (Hhoare st st'). 
+  assumption. apply Himp. assumption. Qed.
+
+Theorem hoare_consequence_post : forall (P Q Q' : Assertion) c,
+  {{P}} c {{Q'}} ->
+  Q' ->> Q ->
+  {{P}} c {{Q}}.
+Proof.
+  intros P Q Q' c Hhoare Himp.
+  intros st st' Hc HP. 
+  apply Himp.
+  apply (Hhoare st st'). 
+  assumption. assumption. Qed.
+
+Theorem hoare_asgn : forall Q X a,
+  {{Q [X |-> a]}} (X ::= a) {{Q}}.
+Proof.
+  unfold hoare_triple.
+  intros Q X a st st' HE HQ.
+  inversion HE. subst.
+  unfold assn_sub in HQ. assumption.  Qed.
+
+Theorem hoare_seq : forall P Q R c1 c2,
+     {{Q}} c2 {{R}} ->
+     {{P}} c1 {{Q}} ->
+     {{P}} c1;;c2 {{R}}.
+Proof.
+  intros P Q R c1 c2 H1 H2 st st' H12 Pre.
+  inversion H12; subst.
+  apply (H1 st'0 st'); try assumption.
+  apply (H2 st st'0); assumption. Qed.
+
+Example hoare_repeat_example_1:
+  {{ fun st => st X > 0 }}
+  REPEAT
+    (Y ::= AId X;; X ::= AMinus (AId X) (ANum 1))
+  UNTIL
+    BEq (AId X) (ANum 0)
+  END
+  {{ fun st => st X = 0 /\ st Y > 0 }}.
+Proof.
+  eapply hoare_consequence_post.
+    apply hoare_repeat with (Q:=(fun st => st X = 0 /\ st Y > 0)).
+      eapply hoare_seq. 
+        apply hoare_asgn.
+
+        eapply hoare_consequence_pre.
+          eapply hoare_asgn.
+
+          intros st H. unfold bassn, assn_sub, update. simpl.
+          right. admit. (* FIXME *)
+    intros st H. inversion H. assumption.
+  Qed.
+
+(*
+    {{ X > 0 }}
+  Y ::= X;;
+    {{ Y > 0 }}
+  X ::= X - 1;;
+    {{ Y > 0 }} ->>
+    {{ Y > 0 /\ (X - 1) > 0 }}
+  WHILE (X <> 0) DO
+      {{ Y > 0 /\ (X - 1) > 0 }} ->>
+      {{ (X - 1) > 0 }}
+    Y ::= X;;
+      {{ Y > 0 }}
+    X ::= X - 1;;
+      {{ Y > 0 }}
+  END
+    {{ ~(X <> 0) /\ Y > 0 }} ->>
+    {{ X = 0 /\ Y > 0 }}
+
+  {{ X = 0 /\ Y > 0 }}
+
+
+    {{ X > 0 }}
+  REPEAT
+      {{ X > 0 }}
+    Y ::= X;;
+      {{ Y > 0 }}
+    X ::= X - 1
+      {{ Y >= 0 }} ->>
+      {{ Y > 0 }}
+  UNTIL X = 0 END
+    {{ X = 0 /\ Y > 0 }} ->>
+    {{ X = 0 /\ Y > 0 }}
+
+    {{P}}
+  REPEAT
+      {{P}}
+    c
+      {{P /\ ~b \/ Q /\ b}}
+  UNTIL b END
+    {{Q /\ b}}
+
+*)
 
 End RepeatExercise.
 (** [] *)
@@ -1737,13 +1914,20 @@ Notation "{{ P }}  c  {{ Q }}" := (hoare_triple P c Q)
 (** Complete the Hoare rule for [HAVOC] commands below by defining
     [havoc_pre] and prove that the resulting rule is correct. *)
 
+(* Since the command is HAVOC, Q must hold for all natural numbers,
+ * thus P must hold for all natural numbers as well. *)
 Definition havoc_pre (X : id) (Q : Assertion) : Assertion :=
-(* FILL IN HERE *) admit.
+  fun st => (forall n, Q (update st X n)).
 
 Theorem hoare_havoc : forall (Q : Assertion) (X : id),
   {{ havoc_pre X Q }} HAVOC X {{ Q }}.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros Q X.
+  unfold hoare_triple. unfold havoc_pre.
+  intros st st'. intros HX HQ.
+  inversion HX. subst.
+  apply HQ.
+  Qed.
 
 End Himp.
 (** [] *)
