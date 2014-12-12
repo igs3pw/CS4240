@@ -520,7 +520,38 @@ Proof.
       {{ Y = m }}
     Write an informal decorated program showing that this is correct. *)
 
-(* FILL IN HERE *)
+(*
+      {{ X = m }}
+    Y ::= 0;
+      {{ I }}
+    WHILE X <> 0 DO
+        {{ I /\ X <>0 }} ->>
+        {{ I[Y |- Y+1][X |- X+1] }}
+      X ::= X - 1;
+        {{ I[Y |- Y+1] }}
+      Y ::= Y + 1;
+        {{ I }}
+    END
+      {{ I /\ X = 0 }} ->>
+      {{ Y = m }}
+
+  The value X + Y is always equal to m after each iteration.
+
+      {{ X = m }}
+    Y ::= 0;
+      {{ X = m /\ Y = 0 }} ->>
+      {{ X + Y = m }}
+    WHILE X <> 0 DO
+        {{ X + Y = m /\ X <> 0 }} ->>
+        {{ (X - 1) + (Y + 1) = m }}
+      X ::= X - 1;
+        {{ X + (Y + 1) = m }}
+      Y ::= Y + 1;
+        {{ X + Y = m }}
+    END
+      {{ X + Y = m /\ X = 0 }} ->>
+      {{ Y = m }}
+*)
 (** [] *)
 
 (* ####################################################### *)
@@ -540,7 +571,36 @@ Proof.
     specification of [add_slowly]; then (informally) decorate the
     program accordingly. *)
 
-(* FILL IN HERE *)
+(*
+      {{ X = m /\ Z = n }} ->>
+      {{ I }}
+    WHILE X <> 0 DO
+        {{ I /\ X <> 0 }} ->>
+        {{ I[X |- X-1][Z |- Z+1] }}
+      Z ::= Z + 1;
+        {{ I[X |- X-1] }}
+      X ::= X - 1;
+        {{ I }}
+    END
+      {{ I /\ X = 0 }} ->>
+      {{ Z = m + n }}
+
+  The value X + Z is always equal to m + n after each iteration.
+
+      {{ X = m /\ Z = n }} ->>
+      {{ X + Z = m + n }}
+    WHILE X <> 0 DO
+        {{ X + Z = m + n /\ X <> 0 }} ->>
+        {{ (X - 1) + (Z + 1) = m + n }}
+      Z ::= Z + 1;
+        {{ (X - 1) + Z = m + n }}
+      X ::= X - 1;
+        {{ X + Z = m + n }}
+    END
+      {{ X + Z = m + n /\ X = 0 }} ->>
+      {{ Z = m + n }}
+*)
+
 (** [] *)
 
 (* ####################################################### *)
@@ -619,7 +679,30 @@ Theorem parity_correct : forall m,
   END
     {{ fun st => st X = parity m }}.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros m.
+  eapply hoare_consequence.
+    apply hoare_while with (P:=(fun st => parity (st X) = parity m)).
+      eapply hoare_consequence_pre.
+        apply hoare_asgn.
+
+        unfold bassn, assn_sub, update. simpl. intros st H. inversion H.
+        rewrite <- H0. apply parity_ge_2.
+        destruct (st X).
+          inversion H1.
+        destruct n.
+          inversion H1. SearchAbout [le].
+        repeat apply le_n_S. apply le_0_n.
+    intros st H. subst. reflexivity.
+
+    unfold bassn, assn_sub, update, not. simpl. intros st H. inversion H.
+    rewrite <- H0. symmetry. apply parity_lt_2. unfold not. intros Hlt. 
+    apply H1.
+    destruct (st X).
+      inversion Hlt.
+    destruct n.
+      inversion Hlt. inversion H3.
+    reflexivity.
+  Qed.
 (** [] *)
 
 (* ####################################################### *)
@@ -775,18 +858,18 @@ Proof.
 
     Fill in the blanks in following decorated program:
     {{ X = m }} ->>
-    {{                                      }}
+    {{ 1 * X! = m! }}
   Y ::= 1;
-    {{                                      }}
+    {{ Y * X! = m! }}
   WHILE X <> 0
-  DO   {{                                      }} ->>
-       {{                                      }}
+  DO   {{ Y * X! = m! /\ X <> 0 }} ->>
+       {{ (Y * X) * (X - 1)! = m! }}
      Y ::= Y * X;
-       {{                                      }}
+       {{ Y * (X - 1)! = m! }}
      X ::= X - 1
-       {{                                      }}
+       {{ Y * X! = m! }}
   END
-    {{                                      }} ->>
+    {{ Y * X! = m! /\ X = 0 }} ->>
     {{ Y = m! }}
 *)
 
@@ -810,25 +893,27 @@ Proof.
   plus, as usual, standard high-school algebra.
 
   {{ True }} ->>
-  {{                    }}
+  {{ 0 = min (a - a) (b - b) }}
   X ::= a;
-  {{                       }}
+  {{ 0 = min (a - X) (b - b) }}
   Y ::= b;
-  {{                       }}
+  {{ 0 = min (a - X) (b - Y) }}
   Z ::= 0;
-  {{                       }}
+  {{ Z = min (a - X) (b - Y) }}
   WHILE (X <> 0 /\ Y <> 0) DO
-  {{                                     }} ->>
-  {{                                }}
+  {{ Z = min (a - X) (b - Y) /\ X <> 0 /\ Y <> 0 }} ->>
+  {{ Z + 1 = min (a - (X - 1)) (b - (Y - 1)) }}
   X := X - 1;
-  {{                            }}
+  {{ Z + 1 = min (a - X) (b - (Y - 1)) }}
   Y := Y - 1;
-  {{                        }}
+  {{ Z + 1 = min (a - X) (b - Y) }}
   Z := Z + 1;
-  {{                       }}
+  {{ Z = min (a - X) (b - Y) }}
   END
-  {{                            }} ->>
+  {{ Z = min (a - X) (b - Y) /\ X = 0 /\ Y = 0}} ->>
   {{ Z = min a b }}
+
+  After each iteration Z is equivalent to the minimum of (a - X) and (b - Y).
 *)
 
 
@@ -852,32 +937,32 @@ Proof.
     following decorated program.
 
     {{ True }} ->>
-    {{                                        }}
+    {{ c = 0 + 0 + c }}
   X ::= 0;
-    {{                                        }}
+    {{ c = X + 0 + c }}
   Y ::= 0;
-    {{                                        }}
+    {{ c = X + Y + c }}
   Z ::= c;
-    {{                                        }}
+    {{ Z = X + Y + c }}
   WHILE X <> a DO
-      {{                                        }} ->>
-      {{                                        }}
+      {{ Z = X + Y + c /\ X <> a }} ->>
+      {{ Z + 1 = X + 1 + Y + c }}
     X ::= X + 1;
-      {{                                        }}
+      {{ Z + 1 = X + Y + c }}
     Z ::= Z + 1
-      {{                                        }}
+      {{ Z = X + Y + c }}
   END;
-    {{                                        }} ->>
-    {{                                        }}
+    {{ Z = X + Y + c /\ X = a }} ->>
+    {{ Z = X + Y + c /\ X = a }}
   WHILE Y <> b DO
-      {{                                        }} ->>
-      {{                                        }}
+      {{ Z = X + Y + c /\ X = a /\ Y <> b }} ->>
+      {{ Z + 1 = X + (Y + 1) + c /\ X = a }}
     Y ::= Y + 1;
-      {{                                        }}
+      {{ Z + 1 = X + Y + c /\ X = a }}
     Z ::= Z + 1
-      {{                                        }}
+      {{ Z = X + Y + c /\ X = a }}
   END
-    {{                                        }} ->>
+    {{ Z = X + Y + c /\ X = a /\ Y = b }} ->>
     {{ Z = a + b + c }}
 *)
 
@@ -899,7 +984,53 @@ Proof.
   END
     Write a decorated program for this. *)
 
-(* FILL IN HERE *)
+(*
+
+    {{ True }}
+  X ::= 0;
+  Y ::= 1;
+  Z ::= 1;
+  WHILE X <> m DO
+    Z ::= 2 * Z;
+    Y ::= Y + Z;
+    X ::= X + 1;
+  END
+    {{ Y = 2^(m+1) - 1 }}
+
+  There are multiple invariants in this loop.
+  First, we know that 2 * Z = Y + 1.
+  Second, we know that Y = 2^(X+1) - 1.
+  The complex part is showing that
+      {{ 2 * Z = Y + 1 /\ Y = 2^(X+1) - 1 }} ->>
+      {{ 4 * Z = Y + 2 * Z + 1 /\ Y + 2 * Z = 2^(X+2) - 1 }}
+  Using simple arithmetic, we know that 4 * Z = Y + 2 * Z + 1 follows from 2 * Z = Y + 1.
+  The second part requires more complicated arithmetic:
+    Y + 2 * Z = 2^(X+2) - 1 -> Y + Y + 1 = 2 * 2^(X+1) - 1 ->
+    2 * Y + 1 = 2 * 2^(X+1) - 1 -> 2 * (2^(X+1) - 1) + 1 = 2 * 2^(X+1) - 1 -->
+    2 * 2^(X+1) - 2 + 1 = 2 * 2^(X+1) - 1, which is true.
+
+    {{ True }} ->>
+    {{ 2 * 1 = 1 + 1 /\ 1 = 2^(0+1) - 1 }}
+  X ::= 0;
+    {{ 2 * 1 = 1 + 1 /\ 1 = 2^(X+1) - 1 }}
+  Y ::= 1;
+    {{ 2 * 1 = Y + 1 /\ Y = 2^(X+1) - 1 }}
+  Z ::= 1;
+    {{ 2 * Z = Y + 1 /\ Y = 2^(X+1) - 1 }}
+  WHILE X <> m DO
+      {{ 2 * Z = Y + 1 /\ Y = 2^(X+1) - 1 /\ X <> m }} ->>
+      {{ 4 * Z = Y + 2 * Z + 1 /\ Y + 2 * Z = 2^(X+2) - 1 }}
+    Z ::= 2 * Z;
+      {{ 2 * Z = Y + Z + 1 /\ Y + Z = 2^(X+2) - 1 }}
+    Y ::= Y + Z;
+      {{ 2 * Z = Y + 1 /\ Y = 2^(X+2) - 1 }}
+    X ::= X + 1;
+      {{ 2 * Z = Y + 1 /\ Y = 2^(X+1) - 1 }}
+  END
+    {{ 2 * Z = Y + 1 /\ Y = 2^(X+1) - 1 /\ X = m }} ->>
+    {{ Y = 2^(m+1) - 1 }}
+
+*)
 
 (* ####################################################### *)
 (** * Weakest Preconditions (Advanced) *)
@@ -942,25 +1073,27 @@ Definition is_wp P c Q :=
 (** **** Exercise: 1 star, optional (wp) *)
 (** What are the weakest preconditions of the following commands
    for the following postconditions?
-  1) {{ ? }}  SKIP  {{ X = 5 }}
+  1) {{ X = 5 }}  SKIP  {{ X = 5 }}
+  Must be equivalent.
 
-  2) {{ ? }}  X ::= Y + Z {{ X = 5 }}
+  2) {{ Y + Z = 5 }}  X ::= Y + Z {{ X = 5 }}
 
-  3) {{ ? }}  X ::= Y  {{ X = Y }}
+  3) {{ True }}  X ::= Y  {{ X = Y }}
 
-  4) {{ ? }}
+  4) {{ (X = 0 /\ Z = 4) \/ (X <> 0 /\ W = 3) }}
      IFB X == 0 THEN Y ::= Z + 1 ELSE Y ::= W + 2 FI
      {{ Y = 5 }}
+  There are two branches, so {{ (X = 0 /\ Z = 4) }} and {{ (X <> 0 /\ W = 3) }}, are valid P'.
+  Thus, P must be the OR of them.
 
-  5) {{ ? }}
+  5) {{ False }}
      X ::= 5
      {{ X = 0 }}
 
-  6) {{ ? }}
+  6) {{ True }}
      WHILE True DO X ::= 0 END
      {{ X = 0 }}
 *)
-(* FILL IN HERE *)
 (** [] *)
 
 (** **** Exercise: 3 stars, advanced, optional (is_wp_formal) *)
@@ -972,7 +1105,22 @@ Theorem is_wp_example :
   is_wp (fun st => st Y <= 4)
     (X ::= APlus (AId Y) (ANum 1)) (fun st => st X <= 5).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  unfold is_wp. split.
+    eapply hoare_consequence_pre.
+      apply hoare_asgn.
+
+      intros st HP. unfold assn_sub, update. simpl.
+      rewrite plus_comm. apply le_n_S. assumption.
+
+    intros P'. intros HX.
+    unfold assert_implies. unfold hoare_triple in HX.
+    intros st HP'. apply HX with (st':=update st X (st Y + 1)) in HP'.
+      unfold update in HP'. simpl in HP'. apply le_S_n.
+      assert (S (st Y) = st Y + 1). rewrite plus_comm. reflexivity.
+      rewrite H. assumption.
+
+      apply E_Ass. simpl. reflexivity.
+  Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, advanced (hoare_asgn_weakest) *)
@@ -982,7 +1130,17 @@ Proof.
 Theorem hoare_asgn_weakest : forall Q X a,
   is_wp (Q [X |-> a]) (X ::= a) Q.
 Proof.
-(* FILL IN HERE *) Admitted.
+  intros Q X a. unfold is_wp.
+  split.
+    apply hoare_asgn.
+
+    intros P'. intros HX. unfold assert_implies. unfold hoare_triple in HX.
+
+    intros st HP'. unfold assn_sub. apply HX with (st:=st).
+      apply E_Ass. reflexivity.
+
+      assumption.
+  Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, advanced, optional (hoare_havoc_weakest) *)
@@ -995,7 +1153,15 @@ Lemma hoare_havoc_weakest : forall (P Q : Assertion) (X : id),
   {{ P }} HAVOC X {{ Q }} ->
   P ->> havoc_pre X Q.
 Proof.
-(* FILL IN HERE *) Admitted.
+  intros P Q X.
+  intros HX.
+  unfold hoare_triple in HX. unfold assert_implies.
+  intros st HP. unfold havoc_pre. intros n.
+  apply HX with (st:=st).
+    apply E_Havoc.
+
+    apply HP.
+  Qed.
 End Himp2.
 (** [] *)
 
@@ -1366,6 +1532,8 @@ Theorem subtract_slowly_dec_correct : forall m p,
   dec_correct (subtract_slowly_dec m p).
 Proof. intros m p. verify. (* this grinds for a bit! *) Qed.
 
+(* Print subtract_slowly_dec_correct. *)
+
 (** **** Exercise: 3 stars, advanced (slow_assignment_dec) *)
 
 (** In the [slow_assignment] exercise above, we saw a roundabout way
@@ -1376,12 +1544,26 @@ Proof. intros m p. verify. (* this grinds for a bit! *) Qed.
     Write a _formal_ version of this decorated program and prove it
     correct. *)
 
-Example slow_assignment_dec (m:nat) : dcom :=
-(* FILL IN HERE *) admit.
+Example slow_assignment_dec (m:nat) : dcom := (
+      {{ fun st => st X = m }}
+    Y ::= ANum 0
+      {{ fun st => st X = m /\ st Y = 0 }} ->>
+      {{ fun st => st X + st Y = m }} ;;
+    WHILE BNot (BEq (AId X) (ANum 0)) DO
+        {{ fun st => st X + st Y = m /\ st X <> 0 }} ->>
+        {{ fun st => (st X - 1) + (st Y + 1) = m }}
+      X ::= AMinus (AId X) (ANum 1)
+        {{ fun st => st X + (st Y + 1) = m }} ;;
+      Y ::= APlus (AId Y) (ANum 1)
+        {{ fun st => st X + st Y = m }}
+    END
+      {{ fun st => st X + st Y = m /\ st X = 0 }} ->>
+      {{ fun st => st Y = m }}
+) % dcom.
 
 Theorem slow_assignment_dec_correct : forall m,
   dec_correct (slow_assignment_dec m).
-Proof. (* FILL IN HERE *) Admitted.
+Proof. intros m. verify. Qed.
 (** [] *)
 
 (** **** Exercise: 4 stars, advanced (factorial_dec)  *)
@@ -1397,7 +1579,37 @@ Fixpoint real_fact (n:nat) : nat :=
     program that implements the factorial function and prove it
     correct. *)
 
-(* FILL IN HERE *)
+Example fact_dec (m:nat) : dcom := (
+    {{ fun st => st X = m }} ->>
+    {{ fun st => 1 * (real_fact (st X)) = (real_fact m) }}
+  Y ::= ANum 1
+    {{ fun st => (st Y) * (real_fact (st X)) = (real_fact m) }} ;;
+  WHILE BNot (BEq (AId X) (ANum 0))
+  DO   {{ fun st => (st Y) * (real_fact (st X)) = (real_fact m) /\ st X <> 0 }} ->>
+       {{ fun st => ((st Y) * (st X)) * (real_fact (st X - 1)) = (real_fact m) }}
+     Y ::= AMult (AId Y) (AId X)
+       {{ fun st => (st Y) * (real_fact (st X - 1)) = (real_fact m) }} ;;
+     X ::= AMinus (AId X) (ANum 1)
+       {{ fun st => (st Y) * (real_fact (st X)) = (real_fact m) }}
+  END
+    {{ fun st => (st Y) * (real_fact (st X)) = (real_fact m) /\ (st X) = 0 }} ->>
+    {{ fun st => (st Y) = (real_fact m) }}
+) % dcom.
+
+Theorem fact_dec_correct : forall m,
+  dec_correct (fact_dec m).
+Proof. intros m. verify.
+  destruct (st X).
+    apply ex_falso_quodlibet. apply H0. trivial.
+
+    simpl. SearchAbout [minus]. rewrite <- minus_n_O.
+    simpl in H.
+    rewrite <- mult_assoc. rewrite -> mult_succ_l. rewrite plus_comm. assumption.
+
+  simpl in H. rewrite mult_1_r in H. assumption.
+  Qed.
+    
+
 (** [] *)
 
 
