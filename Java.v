@@ -28,6 +28,14 @@ Inductive jnum :=
 | jend: bool -> jnum
 | jbit: bool -> jnum -> jnum.
 
+Definition jnum_promotion (n1 n2: nat): nat :=
+  match (leb n1 n2), (leb n1 31), (leb n2 31) with
+  | true, _, true => 31
+  | true, _, false => n2
+  | false, true, _ => 31
+  | false, false, _ => n1
+  end.
+
 (* Treat the java number as unsigned and convert it into a natural number *)
 Fixpoint jnum_width (n: jnum): nat :=
   match n with
@@ -100,7 +108,7 @@ Fixpoint jnum_is_neg (n: jnum): bool :=
   | jbit _ n' => jnum_is_neg n'
   end.
 
-Fixpoint jnum_truncate (jn: jnum) (n: nat): jnum :=
+Fixpoint jnum_promote (jn: jnum) (n: nat): jnum :=
   match n with
   | O =>
     match jn with
@@ -109,8 +117,8 @@ Fixpoint jnum_truncate (jn: jnum) (n: nat): jnum :=
     end
   | S n' => 
     match jn with
-    | jend b => jbit b (jnum_truncate jn n')
-    | jbit b jn' => jbit b (jnum_truncate jn' n')
+    | jend b => jbit b (jnum_promote jn n')
+    | jbit b jn' => jbit b (jnum_promote jn' n')
     end
   end.
 
@@ -182,58 +190,54 @@ Fixpoint jnum_plus0_fix (n: jnum) (c: bool): jnum :=
     | jend b => jbit (negb b) (jend b)
     end
   (* Nothing to change, short circuit *)
-  else jnum_append n (jnum_zero 0).
+  else n.
 
-Fixpoint jnum_plus1_fix (n: jnum) (c: bool): jnum :=
-  if c
-  (* Just propagate the carry through to the end *)
-  then jnum_append n (jnum_one 0)
-  else
-    match n with
-    | jbit b n' => jbit (negb b) (jnum_plus1_fix n' b)
-    | jend b => jbit (negb b) (jend b)
-    end.
+Theorem jnum_plus0_correct: forall n c,
+  jnum_to_nat (jnum_plus0_fix n c) = jnum_to_nat (jend c) + jnum_to_nat n.
+Proof.
+  intros n.
+  induction n.
+    simpl. destruct b; destruct c; reflexivity.
 
-(* The sum of two numbers of n and m bits returns a number of max(n, m) + 1 bits. *)
-Fixpoint jnum_plus_fix (n1 n2: jnum) (c: bool): jnum :=
+    simpl. destruct b; destruct c; simpl; try rewrite IHn; simpl;
+    repeat rewrite <- plus_n_Sm; reflexivity.
+  Qed.
+
+Fixpoint jnum_plus_uns (n1 n2: jnum) (c: bool): jnum :=
   match n1, n2 with
-  | jbit b1 n1', jbit b2 n2' => jbit (bool_sum b1 b2 c) (jnum_plus_fix n1' n2' (bool_sum_carry b1 b2 c))
-  | jbit b1 n1', jend b2 => jbit (bool_sum b1 b2 c) (jnum_plus_fix n1' n2 (bool_sum_carry b1 b2 c))
-  | jend b1, _ =>
-    match b1 with
-    (* Apply the sign extension *)
-    | true => jnum_plus1_fix n2 c
-    | false => jnum_plus0_fix n2 c
-    end
+  | jbit b1 n1', jbit b2 n2' => jbit (bool_sum b1 b2 c) (jnum_plus_uns n1' n2' (bool_sum_carry b1 b2 c))
+  | jbit b1 n1', jend b2 => jbit (bool_sum b1 b2 c) (jnum_plus0_fix n1' (bool_sum_carry b1 b2 c))
+  | jend b1, jbit b2 n2' => jbit (bool_sum b1 b2 c) (jnum_plus0_fix n2' (bool_sum_carry b1 b2 c))
+  | jend b1, jend b2 => jbit (bool_sum b1 b2 c) (jend (bool_sum_carry b1 b2 c))
   end.
 
-Compute jnum_to_nat (jnum_plus_fix (nat_to_jnum 0 1) (nat_to_jnum 0 1) false).
-
 Theorem jnum_plus_correct: forall n1 n2 c,
-  jnum_width n1 = jnum_width n2 -> 
-  jnum_to_nat (jnum_plus_fix n1 n2 c) = 
+  jnum_to_nat (jnum_plus_uns n1 n2 c) = 
   jnum_to_nat (jend c) + jnum_to_nat n1 + jnum_to_nat n2.
 Proof.
   intros n1.
   induction n1.
-    simpl. induction n2.
+    induction n2.
       simpl. destruct b; destruct b0; destruct c; reflexivity.
 
-      simpl. intros c H. inversion H. 
+      simpl. destruct b; destruct b0; destruct c; simpl; rewrite jnum_plus0_correct;
+      simpl; repeat rewrite <- plus_n_Sm; reflexivity.
+        
 
     induction n2.
-      simpl. intros c H. inversion H.
+      simpl. destruct b; destruct b0; destruct c; simpl; rewrite jnum_plus0_correct;
+      simpl; repeat rewrite <- plus_n_Sm; repeat rewrite plus_0_r; reflexivity.
 
       assert (jnum_to_nat n2 + (jnum_to_nat n1 + jnum_to_nat n2) = jnum_to_nat n1 + (jnum_to_nat n2 + jnum_to_nat n2)).
-        repeat rewrite plus_assoc. rewrite (plus_comm (jnum_to_nat n1) (jnum_to_nat n2)). trivial.
-        
+        repeat rewrite plus_assoc. rewrite (plus_comm (jnum_to_nat n1) (jnum_to_nat n2)). trivial. 
       simpl. destruct b; destruct b0; destruct c; simpl;
-        intros Heq; inversion Heq; rewrite IHn1; simpl; repeat rewrite plus_0_r; repeat rewrite <- plus_n_Sm;
+        rewrite IHn1; simpl; repeat rewrite plus_0_r; repeat rewrite <- plus_n_Sm;
         repeat rewrite <- plus_assoc; try rewrite H; trivial.
   Qed.
 
 Definition jnum_plus (n1 n2: jnum): jnum :=
-  jnum_plus_fix n1 n2 false.
+  let n := jnum_promotion (jnum_width n1) (jnum_width n2) in
+    jnum_promote (jnum_plus_uns (jnum_promote n1 n) (jnum_promote n2 n) false) n.
 
 Definition jnum_neg (n: jnum): jnum :=
   jnum_plus (jnum_negb n) (nat_to_jnum 1 (jnum_width n)).
@@ -241,13 +245,25 @@ Definition jnum_neg (n: jnum): jnum :=
 Definition jnum_sub (n1 n2: jnum): jnum :=
   jnum_plus n1 (jnum_neg n2).
 
-Theorem jnum_neg_flips_neg: forall jn,
-   jnum_is_neg (jnum_neg jn) = negb (jnum_is_neg jn).
-Proof.
-  Abort.
+Fixpoint jnum_shl_fix (n1: jnum) (n2: nat): jnum :=
+  match n2 with
+  | O => n1
+  | S n2' => jbit false (jnum_shl_fix n1 n2')
+  end.
 
-Fixpoint jnum_mult2 (n: jnum): jnum :=
-  jbit false n.
+Definition jnum_shl (n1 n2: jnum): jnum
+  let n := jnum_promotion (jnum_width n1) 0 in
+    
+
+Fixpoint jnum_shr_fix (n1: jnum) (n2: nat): jnum :=
+  match n2 with
+  | O => n1
+  | S n2' =>
+    match n1 with
+    | jend _ => jend false
+    | jbit _ n1' => jnum_shr_fix n1' n2'
+    end
+  end.
 
 (**
  * sum = 0
@@ -262,21 +278,20 @@ Fixpoint jnum_mult2 (n: jnum): jnum :=
  * }
  * ...
  *)
-Fixpoint jnum_mult_fix (n1 n2: jnum): jnum :=
+Fixpoint jnum_mult_uns (n1 n2: jnum): jnum :=
   match n1 with
   | jbit b1 n1' => if b1
-                   then jnum_plus (jbit false (jnum_mult_fix n1' n2)) n2
-                   else jbit false (jnum_mult_fix n1' n2)
+                   then jnum_plus_uns (jbit false (jnum_mult_uns n1' n2)) n2 false
+                   else jbit false (jnum_mult_uns n1' n2)
   | jend b1     => if b1
                    then n2
                    else jend false
   end.
- (* FIXME *)
-Compute jnum_to_nat (jnum_mult_fix (nat_to_jnum 3 1) (nat_to_jnum 3 1)).
 
-Theorem jnum_mult_matches_nat: forall n1 n2,
-  jnum_width n1 = jnum_width n2 -> 
-  jnum_to_nat (jnum_mult_fix n1 n2) = (jnum_to_nat n1) * (jnum_to_nat n2).
+Compute jnum_to_nat (jnum_mult_uns (nat_to_jnum 3 1) (nat_to_jnum 3 1)).
+
+Theorem jnum_mult_correct: forall n1 n2,
+  jnum_to_nat (jnum_mult_uns n1 n2) = (jnum_to_nat n1) * (jnum_to_nat n2).
 Proof.
   intros n1.
   induction n1.
@@ -287,20 +302,36 @@ Proof.
 
     intros n2.
     induction n2.
-      simpl. intros H. inversion H.
+      simpl. destruct b; destruct b0; simpl; try rewrite jnum_plus0_correct;
+      simpl; rewrite IHn1; simpl; repeat rewrite plus_0_r; repeat rewrite mult_1_r;
+      repeat rewrite mult_0_r; trivial.
 
-      simpl. intros H. inversion H. destruct b; destruct b0; simpl;
-        repeat rewrite plus_0_r; 
-        try rewrite jnum_plus_correct.
-        simpl; . simpl.
-        assert ((jnum_plus_fix (jnum_mult_fix n1 (jend true)) (jend true) false) = n1).
-          admit.
-        rewrite H. rewrite mult_1_r. trivial.
+      simpl. destruct b; destruct b0; simpl; repeat rewrite plus_0_r; 
+      try rewrite jnum_plus_correct; simpl; rewrite IHn1; simpl; repeat rewrite plus_0_r; 
+      repeat rewrite <- mult_n_Sm; repeat rewrite mult_plus_distr_l;
+      repeat rewrite mult_plus_distr_r.
+        repeat rewrite plus_assoc.
+        admit.
 
-        simpl.
+        admit.
+
+        admit.
+
+        admit.
+  Qed.
 
 Definition jnum_mult (n1 n2: jnum): jnum :=
-  jnum_truncate (jnum_mult_fix n1 n2) (max (jnum_width n1) (jnum_width n2)).
+  let n := jnum_promotion (jnum_width n1) (jnum_width n2) in
+    jnum_promote (jnum_mult_uns (jnum_promote n1 n) (jnum_promote n2 n)) n.
+
+Definition jnum_256 := nat_to_jnum 256 31.
+Definition jnum_65536 := jnum_mult jnum_256 jnum_256.
+Definition jnum_2_32 := jnum_mult jnum_65536 jnum_65536.
+
+Compute jnum_to_nat jnum_2_32.
+Compute jnum_mult jnum_256 jnum_65536.
+
+Compute jnum_to_nat (jnum_mult (nat_to_jnum 65536 16) (nat_to_jnum 65536 16)).
 
 
 
