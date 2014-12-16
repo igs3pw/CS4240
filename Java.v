@@ -6,6 +6,7 @@
  * *** Add stuff as I find it ***
  *)
 
+Require Export SfLib.
 Require Export Arith.
 Require Export Arith.Div2.
 
@@ -164,6 +165,15 @@ Fixpoint jnum_andb (n1 n2: jnum): jnum :=
                   else jnum_zero (jnum_width n2)
   end.
 
+Fixpoint jnum_xorb (n1 n2: jnum): jnum :=
+  match n1, n2 with
+  | jbit b1 n1', jbit b2 n2' => jbit (xorb b1 b2) (jnum_orb n1' n2')
+  | jbit b1 n1', jend b2 => jbit (xorb b1 b2) (jnum_orb n1' n2)
+  | jend b1, _ => if b1
+                  then jnum_negb n2
+                  else n2
+  end.
+
 Definition bool_sum (b1 b2 b3: bool): bool :=
   match b1, b2, b3 with
   | true, true, true => true
@@ -239,31 +249,20 @@ Definition jnum_plus (n1 n2: jnum): jnum :=
   let n := jnum_promotion (jnum_width n1) (jnum_width n2) in
     jnum_promote (jnum_plus_uns (jnum_promote n1 n) (jnum_promote n2 n) false) n.
 
-Definition jnum_neg (n: jnum): jnum :=
-  jnum_plus (jnum_negb n) (nat_to_jnum 1 (jnum_width n)).
+(* ~n + 1 *)
+Definition jnum_neg_uns (n: jnum): jnum :=
+  jnum_plus0_fix (jnum_negb n) true.
+
+Definition jnum_neg (jn: jnum): jnum :=
+  let n := jnum_promotion (jnum_width jn) 0 in
+    jnum_promote (jnum_neg_uns (jnum_promote jn n)) n.
+
+Definition jnum_sub_uns (n1 n2: jnum) (c: bool): jnum :=
+  jnum_plus_uns n1 (jnum_neg_uns n2) c.
 
 Definition jnum_sub (n1 n2: jnum): jnum :=
-  jnum_plus n1 (jnum_neg n2).
-
-Fixpoint jnum_shl_fix (n1: jnum) (n2: nat): jnum :=
-  match n2 with
-  | O => n1
-  | S n2' => jbit false (jnum_shl_fix n1 n2')
-  end.
-
-Definition jnum_shl (n1 n2: jnum): jnum
-  let n := jnum_promotion (jnum_width n1) 0 in
-    
-
-Fixpoint jnum_shr_fix (n1: jnum) (n2: nat): jnum :=
-  match n2 with
-  | O => n1
-  | S n2' =>
-    match n1 with
-    | jend _ => jend false
-    | jbit _ n1' => jnum_shr_fix n1' n2'
-    end
-  end.
+  let n := jnum_promotion (jnum_width n1) (jnum_width n2) in
+    jnum_promote (jnum_sub_uns (jnum_promote n1 n) (jnum_promote n2 n) false) n.
 
 (**
  * sum = 0
@@ -309,29 +308,219 @@ Proof.
       simpl. destruct b; destruct b0; simpl; repeat rewrite plus_0_r; 
       try rewrite jnum_plus_correct; simpl; rewrite IHn1; simpl; repeat rewrite plus_0_r; 
       repeat rewrite <- mult_n_Sm; repeat rewrite mult_plus_distr_l;
-      repeat rewrite mult_plus_distr_r.
-        repeat rewrite plus_assoc.
-        admit.
-
-        admit.
-
-        admit.
-
-        admit.
+      repeat rewrite mult_plus_distr_r; omega.
   Qed.
 
 Definition jnum_mult (n1 n2: jnum): jnum :=
   let n := jnum_promotion (jnum_width n1) (jnum_width n2) in
     jnum_promote (jnum_mult_uns (jnum_promote n1 n) (jnum_promote n2 n)) n.
 
+Fixpoint jnum_is_zero (n: jnum): bool :=
+  match n with
+  | jbit b n' => if b then false else jnum_is_zero n'
+  | jend b => negb b
+  end.
+
+Theorem jnum_is_zero_correct: forall n,
+  jnum_is_zero (nat_to_jnum 0 n) = true.
+Proof.
+  induction n.
+    reflexivity.
+
+    simpl. assumption.
+  Qed.
+
+Theorem jnum_is_zero_correct2: forall n,
+  jnum_to_nat n = 0 -> 
+  jnum_is_zero n = true.
+Proof.
+  induction n.
+    simpl. intros H. destruct b. inversion H. reflexivity.
+
+    simpl. intros H. destruct b. inversion H.
+      apply IHn. destruct (jnum_to_nat n).
+        reflexivity.
+
+        inversion H.
+  Qed.
+
+Theorem jnum_zero_implies: forall n,
+  jnum_is_zero n = true ->
+  jnum_to_nat n = 0.
+Proof.
+  induction n.
+    simpl. intros H. destruct b. inversion H. reflexivity.
+
+    simpl. intros H. destruct b. inversion H.
+      rewrite IHn.
+        reflexivity.
+
+        assumption.
+  Qed.
+
+Fixpoint jnum_eq_uns (n1 n2: jnum): bool :=
+  match n1, n2 with
+  | jbit b1 n1', jbit b2 n2' => if xorb b1 b2 then false else jnum_eq_uns n1' n2'
+  | jend b1, jend b2 => if xorb b1 b2 then false else true
+  | jbit b1 n1', jend b2 => if xorb b1 b2 then false else jnum_is_zero n1'
+  | jend b1, jbit b2 n2' => if xorb b1 b2 then false else jnum_is_zero n2'
+  end.
+
+Definition jnum_eq (n1 n2: jnum): bool :=
+  let n := jnum_promotion (jnum_width n1) (jnum_width n2) in
+    jnum_eq_uns (jnum_promote n1 n) (jnum_promote n2 n).
+
+Fixpoint jnum_leq_uns (n1 n2: jnum): bool :=
+  match n1, n2 with
+  | jbit b1 n1', jbit b2 n2' => if jnum_eq_uns n1' n2' then orb b2 (negb b1) else jnum_leq_uns n1' n2'
+  | jend b1, jend b2 => orb b2 (negb b1)
+  | jbit b1 n1', jend b2 => if jnum_is_zero n1' then orb b2 (negb b1) else false
+  | jend b1, jbit b2 n2' => if jnum_is_zero n2' then orb b2 (negb b1) else true
+  end.
+
+Definition jnum_leq (n1 n2: jnum): bool :=
+  let n := jnum_promotion (jnum_width n1) (jnum_width n2) in
+    match jnum_is_neg n1, jnum_is_neg n2 with
+    | true, false => false
+    | false, true => true
+    | _, _ => jnum_leq_uns (jnum_promote n1 n) (jnum_promote n2 n)
+    end.
+
+Require Export Bool.
+
+Theorem jnum_eq_correct: forall n1 n2,
+  jnum_to_nat n1 = jnum_to_nat n2 -> 
+  jnum_eq_uns n1 n2 = true.
+Proof.
+  induction n1; induction n2.
+    destruct b; destruct b0; simpl; intros H; inversion H; reflexivity.
+
+    destruct b; destruct b0; simpl; repeat rewrite plus_0_r;
+    repeat rewrite <- plus_n_Sm; intros H; inversion H; simpl in IHn2.
+      destruct (jnum_to_nat n2) eqn:Hn2; repeat rewrite <- plus_n_Sm in H; inversion H.
+      apply jnum_is_zero_correct2. assumption.
+
+      destruct (jnum_to_nat n2); repeat rewrite <- plus_n_Sm in H; inversion H.
+
+      destruct (jnum_to_nat n2) eqn:Hn2; repeat rewrite <- plus_n_Sm in H; inversion H.
+      apply jnum_is_zero_correct2. assumption.
+
+    destruct b; destruct b0; simpl; repeat rewrite plus_0_r;
+    repeat rewrite <- plus_n_Sm; intros H; inversion H; simpl in IHn1.
+      destruct (jnum_to_nat n1) eqn:Hn1; repeat rewrite <- plus_n_Sm in H; inversion H.
+      apply jnum_is_zero_correct2. assumption.
+
+      destruct (jnum_to_nat n1); repeat rewrite <- plus_n_Sm in H; inversion H.
+
+      destruct (jnum_to_nat n1) eqn:Hn1; repeat rewrite <- plus_n_Sm in H; inversion H.
+      apply jnum_is_zero_correct2. assumption.
+
+    destruct b; destruct b0; simpl; repeat rewrite plus_0_r;
+    repeat rewrite <- plus_n_Sm; intros H; inversion H; simpl in IHn1.
+      apply IHn1. destruct (jnum_to_nat n1); destruct (jnum_to_nat n2); inversion H1.
+        reflexivity.
+
+        omega. (* Magic *)
+
+      omega. 
+
+      omega. 
+
+      apply IHn1. omega.
+  Qed.
+
+Fixpoint jnum_mod_uns (n1 n2: jnum): jnum :=
+  match n1 with
+  (* 0 % 1 = 0, 1 % 1 = 0, 0 % ...1 = 0, 1 % ...1 = 1 *) 
+  | jend b1 => if jnum_leq_uns n2 n1 then jend false else jend b1
+  | jbit b1 n1' => let n := jbit b1 (jnum_mod_uns n1' n2) in
+                     if jnum_leq_uns n2 n
+                     then jnum_promote (jnum_sub_uns n n2 false) (jnum_width n2)
+                     else n
+  end.
+
+Definition jnum_mod (n1 n2: jnum): jnum :=
+  let n := jnum_promotion (jnum_width n1) (jnum_width n2) in
+    jnum_promote (jnum_mod_uns (jnum_promote n1 n) (jnum_promote n2 n)) n.
+
+Fixpoint jnum_div_uns (n1 n2: jnum): jnum :=
+  match n1 with
+  | jend b1 => if jnum_leq_uns n2 n1 then jend true else jend false
+  | jbit b1 n1' => let n := jnum_div_uns n1' n2 in
+                     let n' := jnum_promote (jbit b1 (jnum_sub_uns n1' (jnum_mult_uns n2 n) false)) (jnum_width n2) in
+                       if jnum_leq_uns n2 n' then jbit true n else jbit false n
+  end.
+
+Definition jnum_div (n1 n2: jnum): jnum :=
+  let n := jnum_promotion (jnum_width n1) (jnum_width n2) in
+    jnum_promote (jnum_div_uns (jnum_promote n1 n) (jnum_promote n2 n)) n.
+
+Compute jnum_mod_uns (nat_to_jnum 41 16) (nat_to_jnum 7 16).
+Compute jnum_div_uns (nat_to_jnum 41 16) (nat_to_jnum 7 16).
+Compute jnum_to_nat (jnum_div_uns (nat_to_jnum 289 16) (nat_to_jnum 17 16)).
+
+(*Theorem jnum_div_correct: forall n1 n2,
+  jnum_to_nat n2 <> 0 ->
+  jnum_to_nat (jnum_plus_uns (jnum_mult_uns (jnum_div_uns n1 n2) n2) (jnum_mod_uns n1 n2) false) = jnum_to_nat n1.
+Proof.
+  intros n1.
+  induction n1.
+    intros n2.
+    rewrite jnum_plus_correct. simpl. rewrite jnum_mult_correct. simpl.
+    induction n2.
+      simpl. destruct b; destruct b0; simpl; try reflexivity.
+        intros H; apply ex_falso_quodlibet; apply H; reflexivity.
+
+      simpl. destruct b; destruct b0; simpl;
+      destruct (jnum_is_zero n2) eqn:Hn2; simpl; repeat rewrite plus_0_r;
+      try trivial.
+        rewrite jnum_zero_implies.
+          reflexivity.
+
+          assumption.
+
+        rewrite jnum_zero_implies.
+          intros H. apply ex_falso_quodlibet; apply H; reflexivity.
+
+          assumption.
+
+        rewrite jnum_zero_implies.
+          intros H. apply ex_falso_quodlibet; apply H; reflexivity.
+
+          assumption.
+
+    intros n2.
+    rewrite jnum_plus_correct. simpl. rewrite jnum_mult_correct. simpl.
+    induction n2.
+      destruct b0; try (intros H; apply ex_falso_quodlibet; apply H; reflexivity).
+      simpl. destruct b; simpl.
+
+    admit.
+  Qed.*)
+
 Definition jnum_256 := nat_to_jnum 256 31.
 Definition jnum_65536 := jnum_mult jnum_256 jnum_256.
 Definition jnum_2_32 := jnum_mult jnum_65536 jnum_65536.
 
 Compute jnum_to_nat jnum_2_32.
-Compute jnum_mult jnum_256 jnum_65536.
-
-Compute jnum_to_nat (jnum_mult (nat_to_jnum 65536 16) (nat_to_jnum 65536 16)).
-
+Compute jnum_mod_uns jnum_256 jnum_65536.
+Compute jnum_div_uns jnum_65536 jnum_256.
 
 
+
+Fixpoint jnum_shl_fix (n1: jnum) (n2: nat): jnum :=
+  match n2 with
+  | O => n1
+  | S n2' => jbit false (jnum_shl_fix n1 n2')
+  end.
+    
+
+Fixpoint jnum_shr_fix (n1: jnum) (n2: nat): jnum :=
+  match n2 with
+  | O => n1
+  | S n2' =>
+    match n1 with
+    | jend _ => jend false
+    | jbit _ n1' => jnum_shr_fix n1' n2'
+    end
+  end.
